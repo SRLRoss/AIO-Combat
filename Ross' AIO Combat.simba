@@ -193,13 +193,13 @@ var
   newFile: Integer;
   newRev: Extended;
 begin
-  newRev := strToFloat(getPage('http://tomstewart.net/proxy.php?url=https://raw.githubusercontent.com/TheTS/SRL-Scripts/master/Mayor-Resource-Dungeon/version.txt'));
+  newRev := strToFloat(getPage('http://tomstewart.net/proxy.php?url=https://raw.githubusercontent.com/SRLRoss/AIO-Combat/master/version.txt'));
 
   if newRev > REVISION then
   begin
     writeln('Updating from revision ' + REVISION + ' to revision ' + newRev);
     newFile := rewriteFile(scriptPath + 'Ross'' AIO Combat v' + newRev, false);
-    writeFileString(newFile, getPage('http://tomstewart.net/proxy.php?url=https://raw.githubusercontent.com/TheTS/SRL-Scripts/master/Mayor-Resource-Dungeon/MayorResourceDungeon.simba'));
+    writeFileString(newFile, getPage('http://tomstewart.net/proxy.php?url=https://raw.githubusercontent.com/SRLRoss/AIO-Combat/master/Ross''%20AIO%20Combat.simba));
     closeFile(newFile);
     writeln('Please open the new file.');
     terminateScript();
