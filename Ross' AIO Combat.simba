@@ -198,8 +198,8 @@ begin
   if newRev > REVISION then
   begin
     writeln('Updating from revision ' + toStr(REVISION) + ' to revision ' + toStr(newRev));
-    newFile := rewriteFile(scriptPath + 'Ross'' AIO Combat v' + toStr(newRev), false);
-    writeFileString(newFile, getPage('http://tomstewart.net/proxy.php?url=https://raw.githubusercontent.com/SRLRoss/AIO-Combat/master/Ross''%20AIO%20Combat.simba));
+    newFile := rewriteFile(scriptPath + 'Ross'' AIO Combat v' + toStr(newRev) + '.simba', false);
+    writeFileString(newFile, getPage('http://tomstewart.net/proxy.php?url=https://raw.githubusercontent.com/SRLRoss/AIO-Combat/master/Ross''%20AIO%20Combat.simba'));
     closeFile(newFile);
     writeln('Please open the new file.');
     terminateScript();
