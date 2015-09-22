@@ -1,17 +1,11 @@
 program AIOFighter;
+{$DEFINE SRLCOMPATIBILITY}
+{$I SRL-6/SRL.simba}
 {$include_once ogLib/lib/core/core.Simba}
-
 
 const
 
-  REVISION = 2.0;
-
-  {                   *Client Settings*
-            The size you want your client to be.
-  }
-
-  CLIENT_WIDTH = 800;
-  CLIENT_HEIGHT = 600;
+  REVISION = 3.0;
 
 
   {                  *Setup Tools*
@@ -24,21 +18,25 @@ const
   GATHER_MONSTER_IDs =  false;
   GET_INVENTORY_IDs = false;
 
-  {                   *Thresholds*
+  {                    *Combat*
         Type in the skills that you will use, in order
                       of priority.
   }
 
   USE_THRESHOLDS = true;
-  THRESHOLD_ORDER = ['forcefulbackhand'];
+  THRESHOLD_ORDER = ['pulverise', 'overpower'];
+  USE_SGS = false;
+  USE_SGS_AT = 70;
+  USE_QUICK_PRAYERS = false;
 
   {                  *Regeneration*
             Requires Revolution combat mode.
-             Health % is randomized by +/-5
+             Health % is randomized between +/-5
   }
 
-  USE_REGENERATE = false;
-  REGENERATE_AT = 60;
+  USE_REGENERATE = true;
+  REGENERATE_WHILE_LOOTING = true;
+  REGENERATE_AT = 50;
 
 
   {              *Looting Charms and Items*
@@ -49,7 +47,7 @@ const
                           settings.
   }
 
-  LOOT_CHARMS = false;
+  LOOT_CHARMS = true;
   LOOT_ITEMS = false;
 
 
@@ -61,7 +59,7 @@ const
   }
 
   LOOT_BONES = false;
-  VKEY_TO_BURY_BONES = 57;
+  VKEY_TO_BURY_BONES = 49;
 
 
  {                    *Skills to Track*
@@ -74,21 +72,24 @@ const
 
  {                          *Food*
     Supports lobster, swordfish, monkfish, shark, rocktail
-                 Health % is randomized by +/-5
+              Health % is randomized between +/-5
  }
 
-  USE_FOOD = false;
-  EAT_AT_PERCENT = 50;
+  USE_FOOD = true;
+  FOOD_KEY = '-';
+  EAT_AT_PERCENT = 20;
 
 
- {                 *Terminate Failsafes*
+ {                       *Failsafes*
+      Teleports and terminates at certain health percent
               TERMINATE_AFTER calls for minutes.
-                  Randomizes +/-5 minutes
+               Randomizes between +/-5 minutes
  }
 
-  TERMINATE_AT_PERCENT = 10;
-  TERMINATE_ON_INVENTORY_FULL = false;
-  TERMINATE_AFTER = 300;
+  ONE_CLICK_TELEPORT_KEY = '=';
+  TERMINATE_AT_HP_PERCENT = 1;
+  TERMINATE_ON_INVENTORY_FULL = true;
+  TERMINATE_AFTER = 9999;
   TERMINATE_AT_KILL_COUNT = 999999999;
 
 
@@ -107,16 +108,17 @@ const
 
  DRINK_POTIONS = false;
  POTIONS_TO_DRINK = ['Super Attack', 'Super Strength'];
+ DRINK_PRAYER_POTION_AT = 50;
 
 
  {                   *Micro Breaking*
        Each break lasts between 10 and 30 seconds
         TAKE_MICRO_BREAK_EVERY calls for minutes.
-                   Randomizes +/-5 minutes
+              Randomizes between +/-5 minutes
  }
 
-  TAKE_MICRO_BREAKS = true;
-  TAKE_MICRO_BREAK_EVERY = 10;
+  TAKE_MICRO_BREAKS = false;
+  TAKE_MICRO_BREAK_EVERY = 15;
 
 
 
@@ -124,14 +126,13 @@ var
 
   {                        *IDs*
               Insert IDs into the arrays below.
+  You do NOT need to put in Bone IDs if you are looting bones.
+
   }
 
   MONSTER_IDs: TCardinalArray := [0];
   LOOT_MODEL_ARRAY: TCardinalArray := [0];
   ITEMS_TO_ALCH: TIntegerArray := [0];
-
-
-
 
 
 (*              Don't edit anything after this.               *)
@@ -180,12 +181,9 @@ var
 
 
 
-
+  canRotateCamera: boolean;
   lastFight, center: TPoint;
-  currentStatus: string;
   startXP, currentXP, kills, breaksTaken: integer;
-  xpBox: TBox;
-  xpIcon: glTextureArray;
   microBreakCountdown, terminateTimer: tCountDown;
 
 procedure getUpdate();
@@ -211,39 +209,39 @@ end;
 function tmouse.getTooltip(): string;
 override;
 var
-  funcID: int32;
-  funcBounds: tBox;
-  funcPointer: pointer;
-  funcPointerIndex, funcPointerSize: uInt32 = 0;
+  ID: int32;
+  Bounds: tBox;
+  Pointer: pointer;
+  PointerIndex, PointerSize: uInt32 = 0;
 begin
-  funcPointer := glTextures(funcPointerSize) + (36 * (funcPointerSize - 1));
-  if funcPointer <> nil then
+  Pointer := glTextures(PointerSize) + (36 * (PointerSize - 1));
+  if Pointer <> nil then
   begin
-    for funcPointerIndex to funcPointerSize div 5 do
+    for PointerIndex to PointerSize div 5 do
     begin
-      if funcPointer ^ = 15878 then
+      if Pointer ^ = 15878 then
       begin
-        funcBounds := [(funcPointer - 88) ^, (funcPointer - 84) ^, (funcPointer + 28) ^, (funcPointer + 32) ^];
+        Bounds := [(Pointer - 88) ^, (Pointer - 84) ^, (Pointer + 28) ^, (Pointer + 32) ^];
         break;
       end;
-      funcPointer := funcPointer - 36;
+      Pointer := Pointer - 36;
     end;
-    if funcPointerIndex < funcPointerSize div 5 then
+    if PointerIndex < PointerSize div 5 then
     begin
-      funcPointer := glFonts(funcPointerSize) + (48 * (funcPointerSize - 1));
-      if funcPointer <> nil then
+      Pointer := glFonts(PointerSize) + (48 * (PointerSize - 1));
+      if Pointer <> nil then
       begin
-        for funcPointerIndex := 0 to funcPointerSize div 2 do
+        for PointerIndex := 0 to PointerSize div 2 do
         begin
-          if pointInBox([(funcPointer + 8) ^, (funcPointer + 12) ^], funcBounds) then
+          if pointInBox([(Pointer + 8) ^, (Pointer + 12) ^], Bounds) then
           begin
-            if (result <> '') and (single((funcPointer + 68) ^) - (single((funcPointer + 20) ^) + integer((funcPointer + 40) ^)) <> 1) then
+            if (result <> '') and (single((Pointer + 68) ^) - (single((Pointer + 20) ^) + integer((Pointer + 40) ^)) <> 1) then
               result := ' ' + result;
-            result := char((funcPointer + 16) ^) + result;
+            result := char((Pointer + 16) ^) + result;
           end
           else if result <> '' then
             break;
-          funcPointer := funcPointer - 96;
+          Pointer := Pointer - 96;
         end;
       end;
     end;
@@ -251,52 +249,91 @@ begin
   exit(result);
 end;
 
-function getTime(time: uint32): string;
+function tOGL.getFormattedTime(time: uint32): string;
 var
   h, m, s: integer;
 begin
   s := time mod 3600000 mod 60000 div 1000;
   m := time mod 3600000 div 60000;
   h := time div 3600000;
-  result:= (toStr(h) + ' h ' + toStr(m) + ' m ' + toStr(s) + ' s');
+  result:= (toStr(h) + 'h ' + toStr(m) + 'm ' + toStr(s) + 's');
 end;
 
-function getXp(): integer;
-begin
-  xpBox:=intToBox(xpIcon[low(xpIcon)].bounds.x1 - 150, xpIcon[low(xpIcon)].bounds.y1, xpIcon[low(xpIcon)].bounds.x2, xpIcon[low(xpIcon)].bounds.y2);
-  result := explode('+', ogl.getChars(xpBox).toString())[0].parseInt();
-end;
-
-procedure progressReport();
+function tMainscreen.getXP(skill: string): integer;
 var
-  currentXp: uint32;
+  i, skillID: uint32;
+  skillTextures: glTextureArray;
+  skillBoxTexture: glTexture;
+  skillBox: TBox;
+begin
+  case lowercase(skill) of
+    'attack': skillID := 16918;
+    'strength': skillID := 39319;
+    'defence': skillID := 41952;
+    'range': skillID := 20999;
+    'magic': skillID := 51211;
+    'constitution': skillID := 38262;
+    'thieving': skillID := 25506;
+    'crafting': skillID := 33559;
+    'fletching': skillID := 19315;
+    'mining': skillID := 16653;
+    'smithing': skillID := 31773;
+    'fishing': skillID := 54626;
+    'runecrafting': skillID := 33877;
+    'slayer': skillID := 64733;
+    'farming': skillID := 34536;
+    'construction': skillID := 54189;
+    'hunter': skillID := 30306;
+    'summoning': skillID := 37582;
+    'prayer': skillID := 23912;
+    'agility': skillID := 29580;
+    'herblore': skillID := 54427;
+    'cooking': skillID := 47376;
+    'firemaking': skillID := 46008;
+    'woodcutting': skillID := 44243;
+    'dungeoneering': skillID := 58390;
+    'divination': skillID := 22933;
+    'combat': skillID := 31110;
+    'overall': skillID := 48705;
+  end;
+  skillTextures:=ogl.getTextures(skillID);
+  if skillTextures.isEmpty() then
+    exit(result-1);
+  skillBoxTexture:=skillTextures[low(skillTextures)];
+  skillBox:=skillBoxTexture.bounds.adjustPosition(-150, 0, 0, 0);
+  result := explode('+', ogl.getChars(skillBox).toString())[0].parseInt();
+end;
+
+procedure progressReport(status: string);
+var
+  i, x, y: integer;
+  currentXp :uint32;
   paintXp, xpHour, killsHour :integer;
   time: string;
+  reportStrings: TStringArray;
 begin
-  currentXp := getXP();
+  currentXp := tMainscreen.getXP(SKILL_TO_TRACK);
   paintXp := currentXp - startXp;
   xpHour := round(paintXp * (3600.0 / (getTimeRunning / 1000.0)));
   killsHour :=  round(kills * (3600.0 / (getTimeRunning / 1000.0)));
-  time:=getTime(getTimeRunning());
+  time:=togl.getFormattedTime(getTimeRunning());
+  x:=11;
+  y:=11;
+  reportStrings:=[toStr(paintXp) + ' ' + SKILL_TO_TRACK + ' xp gained', toStr(xpHour) + ' ' + SKILL_TO_TRACK + ' xp/hr', 'Kills: ' + toStr(kills), 'Kills/hr: ' + toStr(killsHour),  'Status: ' + status, 'Time Running: ' + time, 'Time until next micro break: ' + tOgl.getFormattedTime(microBreakCountdown.timeRemaining()), 'Breaks Taken: ' + toStr(breaksTaken)];
   smart.__graphics.clear;
-  smart.__graphics.DrawText(toStr(paintXp) + ' ' + SKILL_TO_TRACK + ' xp gained', 'smallChars', point(11, 11), 1);
-  smart.__graphics.DrawText(toStr(paintXp) + ' ' + SKILL_TO_TRACK + ' xp gained', 'smallChars', point(10, 10), clWhite);
-  smart.__graphics.DrawText(toStr(xpHour) + ' ' + SKILL_TO_TRACK + ' xp/hr', 'smallChars', point(11, 29), 1);
-  smart.__graphics.DrawText(toStr(xpHour) + ' ' + SKILL_TO_TRACK + ' xp/hr', 'smallChars', point(10, 28), clWhite);
-  smart.__graphics.DrawText('Kills: ' + toStr(kills), 'smallChars', point(11, 47), 1);
-  smart.__graphics.DrawText('Kills: ' + toStr(kills), 'smallChars', point(10, 46), clWhite);
-  smart.__graphics.DrawText('Kills/hr: ' + toStr(killsHour), 'smallChars', point(11, 65), 1);
-  smart.__graphics.DrawText('Kills/hr: ' + toStr(killsHour), 'smallChars', point(10, 64), clWhite);
-  smart.__graphics.DrawText('Status: ' + currentStatus, 'smallChars', point(11, 83), 1);
-  smart.__graphics.DrawText('Status: ' + currentStatus, 'smallChars', point(10, 82), clWhite);
-  smart.__graphics.DrawText('Time Running: ' + time, 'smallChars', point(11, 101), 1);
-  smart.__graphics.DrawText('Time Running: ' + time, 'smallChars', point(10, 100), clWhite);
-  if TAKE_MICRO_BREAKS then
+  for i:= 0 to high(reportStrings) do
   begin
-    smart.__graphics.DrawText('Time until next micro break: ' + getTime(microBreakCountdown.timeRemaining()), 'smallChars', point(11, 119), 1);
-    smart.__graphics.DrawText('Time until next micro break: ' + getTime(microBreakCountdown.timeRemaining()), 'smallChars', point(10, 118), clWhite);
-    smart.__graphics.DrawText('Breaks Taken: ' + toStr(breaksTaken), 'smallChars', point(11, 137), 1);
-    smart.__graphics.DrawText('Breaks Taken: ' + toStr(breaksTaken), 'smallChars', point(10, 136), clWhite);
+    if (i >= (high(reportStrings)-1)) and (not TAKE_MICRO_BREAKS) then
+      continue
+    else
+    begin
+      smart.__graphics.DrawText(reportStrings[i], 'smallChars', point(x+1, y+1), 1);
+      smart.__graphics.DrawText(reportStrings[i], 'smallChars', point(x-1, y-1), 1);
+      smart.__graphics.DrawText(reportStrings[i], 'smallChars', point(x-1, y+1), 1);
+      smart.__graphics.DrawText(reportStrings[i], 'smallChars', point(x+1, y-1), 1);
+      smart.__graphics.DrawText(reportStrings[i], 'smallChars', point(x, y), clWhite);
+      incEx(y, 18);
+    end;
   end;
 end;
 
@@ -306,6 +343,7 @@ var
   ID, potentialID, potentialID2: glModelArray;
   excludedIDs: TIntegerArray;
 begin
+  writeln('Gathering monster IDs- use these IDs to place in MONSTER_IDs array.');
   repeat
   ID:=ogl.getModels();
   excludedIDs:=[4390934, 65536, 65538, 0];
@@ -321,11 +359,12 @@ begin
         if (potentialID[j].x > 0) then
           if (potentialID[j].x <> potentialID2[j].x) or (potentialID[j].y <> potentialID2[j].y) then
           begin
-            mouse.move(potentialID[j].toPoint());
+            tMouse.move(potentialID[j].toPoint());
             wait(100);
-            if pos('Attack', mouse.getTooltip()) then
+            if isMouseOverText(['Attack']) then
             begin
               writeln('ID ' + toStr(potentialID[j].id) + ' may be a monster.');
+              writeln('Searching for IDs.');
               break;
             end
             else
@@ -360,9 +399,42 @@ end;
 
 function hasAlchables: boolean;
 begin
+  if (not HIGH_ALCH) then
+    exit(false);
   result := not inventory.getItems(ITEMS_TO_ALCH).isEmpty();
 end;
 
+function inCombat: boolean;
+var
+  i: integer;
+  lock: glTextureArray;
+begin
+  lock:=ogl.getTextures(7750);
+  if not (lock.isEmpty()) then
+  begin
+    for i:=0 to high(lock) do
+      if pointInbox(lock[i].toPoint(), mainscreen.getBounds()) then
+        exit(true);
+   end;
+end;
+
+function regenerateHealth(waitCombat: boolean): boolean;
+begin
+  if not (USE_REGENERATE and (tActionbar.getLifePoints() < (REGENERATE_AT + randomRange(-5, 5)))) then
+    exit;
+  progressReport('Regenerating health.');
+  tActionbar.setRegenerate(true);
+  wait(randomRange(750, 1250));
+  if waitCombat then
+  begin
+    while (tActionbar.getAdrenaline() > 0) do
+    begin
+      wait(randomRange(750, 1250));
+      if inCombat() then
+        break;
+    end;
+  end;
+end;
 
 function drinkPotion(potion: string): boolean;
 begin
@@ -398,7 +470,7 @@ begin
     'superranging':
         result := not ogl.getTextures([21062], [1512203]).isEmpty();
     'prayerpotion':
-        result := not (actionbar.getPrayerPoints() < randomRange(35, 55));
+        result := not (tActionbar.getPrayerPoints() < (DRINK_PRAYER_POTION_AT + (randomRange(-5, 5))));
     'prayerrenewal':
         result := not ogl.getTextures([55080, 44496]).isEmpty();
   end;
@@ -409,6 +481,8 @@ var
   i: integer;
   potion: string;
 begin
+  if not DRINK_POTIONS then
+    exit;
   for i:= 0 to high(POTIONS_TO_DRINK) do
   begin
     potion := lowercase(extractFromStr(POTIONS_TO_DRINK[i], letters));
@@ -430,7 +504,7 @@ end;
 
 function hasBones: boolean;
 begin
-  result:= not ogl.getModels(TCardinalArray([2406257549, 189892155, 193554437])).isEmpty();
+  result:= not ogl.getModels([2406257549, 189892155, 193554437]).isEmpty();
 end;
 
 function hasBonesInventory: boolean;
@@ -440,18 +514,22 @@ end;
 
 function hasCharms: boolean;
 begin
-  result:= not ogl.getModels(TCardinalArray([1107824708,585563216,2950982353,3759434362,2984528207,544819542])).isEmpty();
+  result:= not ogl.getModels([1107824708,585563216,2950982353,3759434362,2984528207,544819542]).isEmpty();
 end;
 
 procedure alchItems;
 begin
-  currentStatus:= 'Alching item.';
-  progressReport;
+  if (not HIGH_ALCH) then
+    exit;
+  progressReport('Alching item.');
   wait(randomRange(500, 750));
   sendKeys(HIGH_ALCH_KEY, random(25, 40), random(80, 110));
   wait(randomRange(750, 1500));
-  inventory.clickItem(ITEMS_TO_ALCH);
-  wait(randomRange(750, 1500));
+  if (tActionbar.getActionActive(79489)) then
+  begin
+    inventory.clickItem(ITEMS_TO_ALCH);
+    wait(randomRange(750, 1500));
+  end;
 end;
 
 function findAndClick(ID: TCardinalArray = []; optionText: TStringArray = []; point: TPoint = []): boolean;
@@ -466,20 +544,20 @@ begin
     begin
       if (not point.isVisible()) then
       begin
-        if (point.x < (CLIENT_HEIGHT / 2)) then
-          minimap.setDegrees(minimap.getDegrees() + random(20, 30))
+        if (point.x < (center.x)) then
+          tMinimap.setDegrees(tMinimap.getDegrees() + random(20, 30))
         else
-          minimap.setDegrees(minimap.getDegrees() - random(10, 40));
+          tMinimap.setDegrees(tMinimap.getDegrees() - random(10, 40));
         inc(tries);
       end
       else
       begin
         if optionText.isEmpty() then
         begin
-          mouse.click(point.randomizePointEllipse(5), 1);
+          tMouse.click(point.randomizePointEllipse(5), 1);
           exit(true);
         end
-        else if (mouse.rightClickOption(point.randomizePointEllipse(5), optionText, 500)) then
+        else if (tMouse.rightClickOption(point.randomizePointEllipse(5), optionText, 500)) then
           exit(true);
         inc(tries);
       end;
@@ -496,27 +574,27 @@ begin
         exit(false);
       if (not center.closest(modelID)[0].isVisible()) then
       begin
-        if ((modelID)[0].x < (CLIENT_HEIGHT / 2)) then
-          minimap.setDegrees(minimap.getDegrees() + random(20, 30))
+        if ((modelID)[0].x < (center.x)) then
+          tMinimap.setDegrees(tMinimap.getDegrees() + random(20, 30))
         else
-          minimap.setDegrees(minimap.getDegrees() - random(10, 40));
+          tMinimap.setDegrees(tMinimap.getDegrees() - random(10, 40));
         inc(tries);
       end
       else
       begin
         if optionText.isEmpty() then
         begin
-          mouse.click(center.closest(modelID)[0].randomizePointEllipse(5), 1);
+          tMouse.click(center.closest(modelID)[0].randomizePointEllipse(5), 1);
           exit(true);
         end
-        else if (mouse.rightClickOption(center.closest(modelID)[0].randomizePointEllipse(20), optionText, 500)) then
+        else if (tMouse.rightClickOption(center.closest(modelID)[0].randomizePointEllipse(20), optionText, 500)) then
           exit(true)
         else
         begin
-        if ((modelID)[0].x < (CLIENT_HEIGHT / 2)) then
-          minimap.setDegrees(minimap.getDegrees() + random(5, 15))
+        if ((modelID)[0].x < (center.x)) then
+          tMinimap.setDegrees(tMinimap.getDegrees() + random(5, 15))
         else
-          minimap.setDegrees(minimap.getDegrees() - random(5, 15));
+          tMinimap.setDegrees(tMinimap.getDegrees() - random(5, 15));
         wait(randomRange(250, 750));
         inc(tries);
         end;
@@ -531,6 +609,9 @@ var
   i: integer;
   exitButton, bounds: glTextureArray;
 begin
+  if (ogl.getTextures(714000).isEmpty()) then
+    exit;
+  progressReport('Clicking exit button.');
   exitButton := ogl.getTextures(16320);
   bounds := ogl.getTextures(714000);
   if bounds.isEmpty() then
@@ -539,7 +620,7 @@ begin
     begin
       if pointInBox(exitButton[i].toPoint(), bounds[low(bounds)].bounds) then
       begin
-        mouse.click((exitButton)[i]);
+        tMouse.click((exitButton)[i]);
         wait(randomRange(750, 1000));
       end;
     end;
@@ -552,7 +633,7 @@ begin
   lootCustom := ogl.getTextures(91275);
   if (not lootCustom.isEmpty()) then
   begin
-    mouse.click(lootCustom[0]);
+    tMouse.click(lootCustom[0]);
     wait(randomRange(750, 1000));
     clickExitButton();
   end;
@@ -560,105 +641,146 @@ end;
 
 function lootItems: boolean;
 begin
- currentStatus:= 'Looting items.';
-  progressReport;
+  if not (((LOOT_ITEMS) and (hasLoot()) and (not inventory.isFull()))) then
+    exit;
+  progressReport('Looting items.');
   result := findAndClick(LOOT_MODEL_ARRAY);
-  if result then
-  begin
-    waitFlag;
-    wait(randomRange(1000, 1250));
-  end
-  else
-    wait(randomRange(200, 500));
-  while (not ogl.getTextures(714000).isEmpty()) do
-  begin
-    clickLootCustom;
-  end;
 end;
 
 function lootBones: boolean;
 begin
-  currentStatus:= 'Looting bones.';
-  progressReport;
+  if not (((LOOT_BONES) and (hasBones()) and (not inventory.isFull()))) then
+    exit;
+  progressReport('Looting bones.');
   result := findAndClick([2406257549, 189892155, 193554437], ['bones', 'Bones']);
-  if result then
-  begin
-    waitFlag;
-    wait(randomRange(1000, 1250));
-  end
-  else
-    wait(randomRange(200, 500));
 end;
 
 function lootCharms: boolean;
 begin
-  currentStatus:= 'Looting charms.';
-  progressReport;
+  if not (((LOOT_CHARMS) and (hasCharms()) and (not inventory.isFull()))) then
+    exit;
+  progressReport('Looting charms.');
   result := findAndClick([1107824708,585563216,2950982353,3759434362,2984528207,544819542], ['charm']);
-  if result then
+end;
+
+procedure clickCharms;
+var
+  i: integer;
+  charms: glTextureArray;
+begin
+  repeat
+    charms:=ogl.getTextures(120870);
+    if not charms.isEmpty() then
+    begin
+      for i:=0 to high(charms)  do
+      begin
+        if pointInBox(charms[i].toPoint(), mainscreen.getBounds()) then
+        begin
+          tmouse.click(charms[i]);
+          wait(randomRange(750, 1250));
+          break;
+        end;
+      end;
+    end;
+  until(charms.isEmpty());
+end;
+
+procedure lootProcedure;
+begin
+  if lootBones or lootItems then
   begin
+    if REGENERATE_WHILE_LOOTING then
+      regenerateHealth(false);
     waitFlag;
     wait(randomRange(1000, 1250));
+    while (not ogl.getTextures(714000).isEmpty()) do
+    begin
+      clickLootCustom;
+    end;
   end
-  else
-    wait(randomRange(200, 500));
+  else if lootCharms then
+  begin
+    if REGENERATE_WHILE_LOOTING then
+      regenerateHealth(false);
+    waitFlag;
+    wait(randomRange(1000, 1250));
+    while (not ogl.getTextures(714000).isEmpty()) do
+    begin
+      clickCharms;
+      clickExitButton;
+    end;
+  end;
 end;
 
 function dropBones: boolean;
 var
   boneTextures: glTextureArray;
 begin
-  currentStatus:= 'Dropping bones.';
-  progressReport;
+  if not (LOOT_BONES and inventory.isFull()) then
+    exit;
+  progressReport('Dropping bones.');
   keyDown(VKEY_TO_BURY_BONES);
   while (hasBonesInventory()) do
   begin
     wait(randomRange(500, 1250));
   end;
   keyUp(VKEY_TO_BURY_BONES);
+  exit(true);
 end;
 
 function lowHealth: boolean;
 begin
-  result := (actionbar.getLifePoints() < (EAT_AT_PERCENT + randomRange(-5, 5)));
+  result := (tActionbar.getLifePoints() < (EAT_AT_PERCENT + randomRange(-5, 5)));
 end;
 
 function eatFood: boolean;
 var
-  food: glTextureArray;
+  hp: integer;
 begin
-  currentStatus:= 'Eating food.';
-  progressReport;
-  food := ogl.getTextures([94605, 59670, 102255, 112710, 97410], [3217671, 1445400, 2301468, 3352865, 2300952]);
-  if (not food.isEmpty()) then
-  begin
-    mouse.click(food[0].toPoint().randomizePointEllipse(5), 1);
-    wait(randomRange(1250, 1500));
-    result := true;
-  end;
-  exit(result);
-end;
-
-function inCombat: boolean;
-begin
-  if actionbar.getState() then
-    result := (ogl.getTextures(7750).indexes() > 1)
+  if not (USE_FOOD and lowHealth()) then
+    exit;
+  hp := tActionbar.getLifePoints();
+  progressReport('Eating food.');
+  //food := ogl.getTextures([94605, 59670, 102255, 112710, 97410], [3217671, 1445400, 2301468, 3352865, 2300952]);
+  sendKeys(FOOD_KEY, random(25, 40), random(80, 110));
+  wait(randomRange(1250, 1500));
+  if ((tActionbar.getLifePoints() - hp) > 1) then
+    exit(true)
   else
-    result := (ogl.getTextures(7750).indexes() > 0);
+  begin
+    writeln('Out of food, terminating.');
+    terminateScript;
+  end;
 end;
 
 function getLastFight(): TPoint;
 var
   ringModel: glModelArray;
 begin
-  ringModel:=ogl.getModels(TCardinalArray([1829014414, 1938370197]));
+  ringModel:=ogl.getModels([1829014414, 1938370197]);
   if (not ringModel.isEmpty()) then
-    result := center.closest(ringModel)[0]
+    result := center.closest(ringModel)[0].toPoint
   else if combat.hasTarget() then
     result := combat.getTarget().toPoint()
   else
     result := lastFight;
   exit(result);
+end;
+
+procedure rotateCamera;
+var
+  adjustment, currentRadians: extended;
+begin
+  if canRotateCamera then
+  begin
+    progressReport('Rotating camera.');
+    currentRadians := tMinimap.getRadians();
+    tMinimap.setDegrees(abs(tMinimap.getDegrees() - randomRange(20, 180)));
+    if tMinimap.getRadians <> currentRadians then
+      canRotateCamera:=false;
+    adjustment := currentRadians - tMinimap.getRadians();
+    lastFight := rotatePoint(getLastFight, - adjustment, center.x, center.y);
+  end;
 end;
 
 function closestValidModel(arrayResult:gLModelArray; comparePoint: TPoint; distance: Integer):TPoint;
@@ -671,7 +793,7 @@ begin
   begin
     if (center.closest(arrayResult)[i].distanceFrom(comparePoint) > distance) then
     begin
-      result:=center.closest(arrayResult)[i];
+      result:=center.closest(arrayResult)[i].toPoint;
       exit(result);
     end;
   end;
@@ -689,9 +811,10 @@ begin
   rx := 0;
   ry := 0;
   tries := 0;
+  progressReport('Killing monsters.');
   while (tries < 6) do
   begin
-    closestMonster := closestValidModel(ogl.getModels(MONSTER_IDs), lastFight, 125);
+    closestMonster := closestValidModel(ogl.getModels(MONSTER_IDs, [mainscreen.getBounds()]), lastFight, 125);
     if (closestMonster.x = 0) then
     begin
       wait(1500);
@@ -699,24 +822,24 @@ begin
     end
     else if (not closestMonster.isVisible()) then
     begin
-      currentRadians := minimap.getRadians();
-      if (closestMonster.x < (CLIENT_HEIGHT / 2)) then
-        minimap.setDegrees(minimap.getDegrees() + random(20, 30))
+      currentRadians := tMinimap.getRadians();
+      if (closestMonster.x < (center.x)) then
+        tMinimap.setDegrees(tMinimap.getDegrees() + random(20, 30))
       else
-        minimap.setDegrees(minimap.getDegrees() - random(10, 40));
-      adjustment := currentRadians - minimap.getRadians();
+        tMinimap.setDegrees(tMinimap.getDegrees() - random(10, 40));
+      adjustment := currentRadians - tMinimap.getRadians();
       lastFight := rotatePoint(getLastFight, - adjustment, center.x, center.y);
       exit(false);
     end
     else
     begin
-      mouse.click(closestMonster.adjustposition(rx, ry).randomizePointEllipse(3), 2);
+      tMouse.click(closestMonster.adjustposition(rx, ry).randomizePointEllipse(5), 2);
       wait(75);
-      if pos('Attack', mouse.getTooltip()) then
+      if pos('Attack', tMouse.getTooltip()) then
       begin
-        mouse.click(mouse.getPoint(), 1);
+        tMouse.click(tMouse.getPoint(), 1);
         wait(100);
-        if pos('red', mouse.getClick()) then
+        if pos('red', tMouse.getClick()) then
         begin
           attackTimer.setTime(randomRange(3000, 4500));
           while (not attackTimer.isFinished) do
@@ -726,16 +849,18 @@ begin
             if inCombat() then
               break;
           end;
-          progressReport;
+          progressReport('Attacking Monster.');
+          canRotateCamera:=true;
           exit(true);
         end
         else
         begin
+          progressReport('Attacking Monster.');
           wait(randomRange(100, 250));
           exit(false);
         end;
       end
-      else if ((tries >= 5)) and (mouse.rightClickOption(mouse.getPoint(), 'Attack', 750)) then
+      else if ((tries >= 5)) and (tMouse.rightClickOption(tMouse.getPoint(), 'Attack', 750)) then
       begin
         attackTimer.setTime(randomRange(3000, 4500));
         while (not attackTimer.isFinished) do
@@ -745,14 +870,15 @@ begin
           if inCombat() then
             break;
         end;
-        progressReport;
+        progressReport('Attacking Monster.');
+        canRotateCamera:=true;
         exit(true);
       end
       else
       begin
         inc(tries);
-        rx := rx + (random( - 20, 20));
-        ry := ry + (random( - 20, 20));
+        rx := rx + (random( - 5, 5));
+        ry := ry + (random( - 5, 5));
       end;
     end;
   end;
@@ -789,6 +915,8 @@ begin
       adrenReq := 100;
    'frenzy':
       adrenReq := 100;
+   'specialattack':
+      adrenReq := 50;
    'snapshot':
       adrenReq := 50;
    'deadshot':
@@ -828,10 +956,22 @@ begin
    'barricade':
       adrenReq := 100;
   end;
-  if (actionbar.getAdrenaline() >= adrenReq) then
-    if (not actionbar.isAbilityOnCoolDown(ability)) then
-      if (not actionbar.isAbilityQueued(ability)) then
+  if (tActionbar.getAdrenaline() >= adrenReq) then
+    if (not tActionbar.isAbilityOnCoolDown(ability)) then
+      if (not tActionbar.isAbilityQueued(ability)) then
         result:=true;
+end;
+
+function useSGS(): boolean;
+begin
+  if (not USE_SGS) or (not (tActionbar.getLifePoints() <= (USE_SGS_AT + randomRange(-5, 5)))) then
+    exit;
+  if canThreshold('special attack') then
+  begin
+    sendkeys(tActionbar.getAbilityKey('special attack'), random(25, 40), random(80, 110));
+    wait(randomRange(750, 1250));
+    exit(true);
+  end;
 end;
 
 procedure useThresholds;
@@ -839,28 +979,26 @@ var
   i: integer;
   threshold: string;
 begin
+  if (not USE_THRESHOLDS) or (useSGS()) then
+    exit;
   for i:=0 to high(THRESHOLD_ORDER) do
   begin
     threshold := lowercase(extractFromStr(THRESHOLD_ORDER[i], letters));
     if canThreshold(threshold) then
     begin
-      sendkeys(actionbar.getAbilityKey(threshold), random(25, 40), random(80, 110));
+      sendkeys(tActionbar.getAbilityKey(threshold), random(25, 40), random(80, 110));
       wait(randomRange(750, 1250));
       exit;
     end;
   end;
 end;
 
-function regenerateHealth: boolean;
+procedure useQuickPrayers;
 begin
-  actionbar.setRegenerate(true);
-  wait(randomRange(750, 1250));
-  while (actionbar.getAdrenaline() > 0) do
-  begin
-    wait(randomRange(750, 1250));
-    if inCombat() then
-      break;
-  end;
+  if (not USE_QUICK_PRAYERS) then
+    exit;
+  if tActionbar.setQuickPrayer(true) then
+    wait(randomRange(500, 1000));
 end;
 
 procedure setMicroBreak;
@@ -872,96 +1010,121 @@ procedure takeMicroBreak;
 var
   breakTime: tCountDown;
 begin
+  if not (TAKE_MICRO_BREAKS and microBreakCountdown.isFinished()) then
+    exit;
   breakTime.setTime(randomRange(10000, 30000));
   inc(breaksTaken);
   while (not breaktime.isFinished()) do
   begin
-    currentStatus:=('Taking break for ' + toStr(round(breakTime.timeRemaining()/1000)) + ' more seconds.');
-    progressReport;
+    progressReport('Taking break for ' + toStr(round(breakTime.timeRemaining()/1000)) + ' more seconds.');
     wait(1000);
   end;
   setMicroBreak;
 end;
 
+procedure getKills;
+begin
+  if tMainscreen.getXP(SKILL_TO_TRACK) <> currentXP then
+  begin
+    inc(kills);
+    currentXP := tMainscreen.getXP(SKILL_TO_TRACK);
+    progressReport('Attacking Monster.');
+  end;
+end;
+
+procedure checkTerminate;
+begin
+  if (terminateTimer.isFinished()) then
+  begin
+    writeln('Time failsafe is up, terminating.');
+    terminateScript;
+  end;
+  if (tActionbar.getLifePoints() < TERMINATE_AT_HP_PERCENT) then
+  begin
+    writeln('Life points too low, teleporting and terminating.');
+    sendkeys(ONE_CLICK_TELEPORT_KEY, random(25, 40), random(80, 110));
+    terminateScript;
+  end;
+  if (TERMINATE_ON_INVENTORY_FULL and inventory.isFull()) then
+  begin
+    writeln('Inventory is full, terminating.');
+    terminateScript;
+  end;
+  if (kills >= TERMINATE_AT_KILL_COUNT) then
+  begin
+    writeln('Time failsafe is up, terminating.');
+    terminateScript;
+  end;
+end;
+
+procedure fixCamera;
+begin
+  if (tMainScreen.getVerticalDegrees() < random(45, 50)) then
+  begin
+    tMainscreen.setVerticalDegrees(random(58, 60));
+    wait(250);
+  end;
+end;
+
+procedure setRetaliate;
+begin
+  if tActionbar.setAutoRetaliate(true) then
+    wait(randomRange(500, 1000));
+end;
+
 procedure combatLoop;
 begin
   repeat
-    if getXP() <> currentXP then
-    begin
-      inc(kills);
-      currentXP := getXP();
-    end;
-    if (terminateTimer.isFinished()) or (actionbar.getLifePoints() < TERMINATE_AT_PERCENT)
-      or (TERMINATE_ON_INVENTORY_FULL and inventory.isFull()) or (kills >= TERMINATE_AT_KILL_COUNT) then
-      terminateScript;
-    if TAKE_MICRO_BREAKS and microBreakCountdown.isFinished() then
-      takeMicroBreak;
-    if mainScreen.getVerticalDegrees() < random(55, 60) then
-    begin
-      mainscreen.setVerticalDegrees(random(67, 69));
-      wait(250);
-    end;
-    if (not ogl.getTextures(714000).isEmpty()) then
-      clickExitButton;
-    if actionbar.setAutoRetaliate(true) then
-      wait(randomRange(500, 1000));
+    getKills;
+    checkTerminate;
+    takeMicroBreak;
+    fixCamera;
+    clickExitButton;
+    setRetaliate;
     while hasAlchables() do
       alchItems;
-    if DRINK_POTIONS then
-      checkBuffs;
-    if USE_THRESHOLDS then
-      useThresholds;
+    checkBuffs;
+    useThresholds;
+    useQuickPrayers;
     if (not inCombat()) then
     begin
-      if USE_REGENERATE and (actionbar.getLifePoints() < (REGENERATE_AT + randomRange(-5, 5))) then
-        regenerateHealth();
-      if ((LOOT_BONES) and (hasBones()) and (not inventory.isFull())) then
-        lootBones
-      else if ((LOOT_ITEMS) and (hasLoot()) and (not inventory.isFull())) then
-        lootItems
-      else if ((LOOT_CHARMS) and (hasCharms()) and (not inventory.isFull())) then
-        lootCharms
-      else if (LOOT_BONES and inventory.isFull()) then
-        dropBones
-      else
-        attackMonster;
-      currentStatus:='Killing monsters.';
+      if tActionbar.setQuickPrayer(false) then
+        wait(randomRange(500, 1000));
+      regenerateHealth(true);
+      lootProcedure;
+      if not dropBones() then
+        if not attackMonster() then
+          rotateCamera;
     end;
     lastFight := getLastFight;
-    if USE_FOOD and lowHealth() then
-      eatFood;
+    eatFood;
   until(false);
 end;
 
 procedure initialSetup;
 begin
-  center := ogl.getClientMidPoint();
+  center := mainscreen.getCenterPoint();
   terminateTimer.setTime((TERMINATE_AFTER * 60000) + (randomRange(-300000, 300000)));
+  writeln('Terminating in: ' + tOGL.getFormattedTime(terminateTimer.timeRemaining()));
   if TAKE_MICRO_BREAKS then
     setMicroBreak;
-  case lowercase(SKILL_TO_TRACK) of
-    'attack' : xpIcon:= ogl.getTextures(16918);
-    'strength' : xpIcon:= ogl.getTextures(39319);
-    'defense' : xpIcon:= ogl.getTextures(41952);
-    'ranged' : xpIcon:= ogl.getTextures(20999);
-    'mage' : xpIcon:= ogl.getTextures(51211);
-    'overall' : xpIcon:= ogl.getTextures(48705);
-  end
-  if xpIcon.isEmpty() then
-  begin
-    writeln('XP Tracker Icon not found, enable it in Settings');
-    terminateScript;
-  end;
-  currentXP := getXP();
+  currentXP := tMainscreen.getXP(SKILL_TO_TRACK);
   startXp := currentXP;
 end;
 
 begin
   getUpdate();
-  ogl.setup(CLIENT_WIDTH, CLIENT_HEIGHT);
+  ogl.setup();
+  disableSRLDebug:=true;
+  if (not isLoggedIn()) then
+  begin
+    writeln('Not logged into game.');
+    terminateScript;
+  end;
+  glxViewPort(mainscreen.getBounds().x1,mainscreen.getBounds().y1,mainscreen.getBounds().x2,mainscreen.getBounds().y2);
+  smart.__graphics.DrawBox(mainscreen.getBounds());
   ogl.setDebugMode('n');
   initialSetup;
-
   if GATHER_MONSTER_IDs then
     gatherMonsterIDs
   else if GET_INVENTORY_IDs then
